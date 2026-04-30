@@ -58,16 +58,17 @@ import random
 import math
 import time
 import copy
+import matplotlib.pyplot as plt
 
 
 # ===========================================================================
 # CONFIG — edit these to experiment with SA behaviour
 # ===========================================================================
-INITIAL_TEMP    = 0.5      # T₀: starting temperature
-COOLING_RATE    = 0.9995   # α:  T *= α after each epoch
+INITIAL_TEMP    = 0.7      # T₀: starting temperature
+COOLING_RATE    = 0.7     # α:  T *= α after each epoch
 STEPS_PER_TEMP  = 200      # proposals per epoch
 MIN_TEMP        = 0.0005   # halt when T falls below this
-MAX_STEPS       = 800_000  # hard cap on total iterations (safety net)
+MAX_STEPS       = 1_000_000  # hard cap on total iterations (safety net)
 REHEAT_FACTOR   = 1.4      # multiply T by this when stuck; None = disabled
 REHEAT_PATIENCE = 3_000    # steps without improvement before reheating
 RANDOM_SEED     = None     # set an int for reproducible runs, None = random
@@ -134,7 +135,7 @@ def cost(grid: list[list[int]]) -> int:
     """
     Count duplicate digits across all rows and all columns.
     Boxes are always conflict-free by construction, so we skip them.
-    Returns 0 iff the puzzle is solved.
+    Returns 0 if the puzzle is solved.
     """
     total = 0
     for i in range(9):
@@ -180,7 +181,26 @@ def undo_swap(grid: list[list[int]], r1: int, c1: int, r2: int, c2: int) -> None
 # Simulated Annealing
 # ---------------------------------------------------------------------------
 
-def simulated_annealing(puzzle: list[list[int]], verbose: bool = True) -> list[list[int]] | None:
+def plot_cost_history(accepted_history: list, best_history: list) -> None:
+    steps_a, costs_a = zip(*accepted_history)
+    steps_b, costs_b = zip(*best_history)
+
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.plot(steps_a, costs_a, alpha=0.35, linewidth=0.6, color="steelblue", label="Accepted cost")
+    ax.plot(steps_b, costs_b, linewidth=1.8, color="crimson", label="Best cost")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Cost (row + column conflicts)")
+    ax.set_title("Simulated Annealing — cost over time")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def simulated_annealing(
+    puzzle: list[list[int]],
+    verbose: bool = True,
+    plot_progress: bool = False,
+) -> list[list[int]] | None:
     if RANDOM_SEED is not None:
         random.seed(RANDOM_SEED)
 
@@ -197,6 +217,9 @@ def simulated_annealing(puzzle: list[list[int]], verbose: bool = True) -> list[l
     accepted_bad           = 0
     reheat_count           = 0
     start                  = time.time()
+
+    accepted_history = [(0, current_cost)]
+    best_history     = [(0, best_cost)]
 
     if verbose:
         print(f"\nSA started  | cost={current_cost} | T0={INITIAL_TEMP} "
@@ -219,9 +242,11 @@ def simulated_annealing(puzzle: list[list[int]], verbose: bool = True) -> list[l
             if delta <= 0 or random.random() < math.exp(-delta / T):
                 current_cost = new_cost
                 epoch_accepted += 1
+                accepted_history.append((total_steps, current_cost))
                 if new_cost < best_cost:
                     best_cost  = new_cost
                     best_grid  = copy.deepcopy(grid)
+                    best_history.append((total_steps, best_cost))
                     steps_no_improvement = 0
                     accepted_bad = 0  # reset counter for cleaner logging
             else:
@@ -237,6 +262,8 @@ def simulated_annealing(puzzle: list[list[int]], verbose: bool = True) -> list[l
                 if verbose:
                     print(f"\nSOLVED in {total_steps:,} steps | "
                           f"T={T:.4f} | time={elapsed:.2f}s | reheats={reheat_count}")
+                if plot_progress:
+                    plot_cost_history(accepted_history, best_history)
                 return best_grid
 
         # Cool down
@@ -260,6 +287,8 @@ def simulated_annealing(puzzle: list[list[int]], verbose: bool = True) -> list[l
         print(f"\nNot solved. Best cost={best_cost} | "
               f"steps={total_steps:,} | time={elapsed:.2f}s | reheats={reheat_count}")
         print("  Try: increase INITIAL_TEMP, lower COOLING_RATE, or raise MAX_STEPS.")
+    if plot_progress:
+        plot_cost_history(accepted_history, best_history)
     return None
 
 
@@ -304,6 +333,18 @@ PUZZLES = {
         "000060800"
         "000000030"
     ),
+
+    "new": (
+        "300049000"
+        "000600501"
+        "752001000"
+        "001000700"
+        "500396000"
+        "008150096"
+        "003010060"
+        "004000100"
+        "000028000"
+    )
 }
 
 
@@ -323,7 +364,7 @@ if __name__ == "__main__":
     puzzle = parse_puzzle(PUZZLES[key])
     print_grid(puzzle, title=f"Puzzle ({key})")
 
-    solution = simulated_annealing(puzzle, verbose=True)
+    solution = simulated_annealing(puzzle, verbose=True, plot_progress=True)
 
     if solution:
         print_grid(solution, title="Solution")
